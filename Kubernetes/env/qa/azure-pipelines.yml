@@ -1,0 +1,87 @@
+# ------------------------------------------------------------------------------------ #
+# Description:
+#   Pipeline to deploy the IEP Core Infrastructure 
+#
+# ------------------------------------------------------------------------------------ #
+variables:
+
+- group: IEP - SSH Key
+trigger: none
+
+stages:
+- stage: Build
+  displayName: Terraform-Plan  
+  jobs:
+  - job: TerraformPlan
+    displayName: Terraform-Plan
+    pool:
+      name: Private-Build-Agents
+    steps:
+    - checkout: self
+    - script: ls $(System.DefaultWorkingDirectory)
+    - script: ls $(System.DefaultWorkingDirectory)/IEP/env
+    - script: ls $(System.DefaultWorkingDirectory)/IEP/env/qa
+    - task: TerraformInstaller@0
+      displayName: 'Use Terraform latest'
+
+    - task: TerraformCLI@0
+      displayName: Terraform-Init
+      inputs:
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/IEP/env/qa'
+        backendType: 'azurerm'
+        backendServiceArm: 'Core IT - Core (Prod) IAC Service Connection-Integrated Engineering Platform'
+        backendAzureRmResourceGroupName: 'rg-weu-pr-core-iac'
+        backendAzureRmStorageAccountName: 'saweuprcoreiac01'
+        backendAzureRmContainerName: 'terraformstate'
+        backendAzureRmKey: 'iep-qa.tfvars'
+
+    - task: TerraformCLI@0
+      displayName: Terraform-Plan
+      inputs:
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/IEP/env/qa'
+        environmentServiceName: 'Core IT - IEP (QA) IEP IaC Service Connection'
+        commandOptions: '-var "aks_ssh_key=$(aks-ssh-key)"'
+
+
+- stage: Apply
+  displayName: Terraform-Apply 
+  dependsOn: Build
+  jobs:
+  - deployment: TerraformApply
+    displayName: Terraform-Apply
+    pool:
+      name: Private-Build-Agents
+    environment: IEP-Terraform
+    strategy: 
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+          - script: ls $(System.DefaultWorkingDirectory)
+          - script: ls $(System.DefaultWorkingDirectory)/IEP/env
+          - script: ls $(System.DefaultWorkingDirectory)/IEP/env/qa
+          - task: TerraformInstaller@0
+            displayName: 'Use Terraform latest'
+
+          - task: TerraformCLI@0
+            displayName: Terraform-Init
+            inputs:
+              command: 'init'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/IEP/env/qa'
+              backendType: 'azurerm'
+              backendServiceArm: 'Core IT - Core (Prod) IAC Service Connection-Integrated Engineering Platform'
+              backendAzureRmResourceGroupName: 'rg-weu-pr-core-iac'
+              backendAzureRmStorageAccountName: 'saweuprcoreiac01'
+              backendAzureRmContainerName: 'terraformstate'
+              backendAzureRmKey: 'iep-qa.tfvars'#
+
+          - task: TerraformCLI@0
+            displayName: Terraform-Apply
+            timeoutInMinutes: 0
+            inputs:
+              command: 'apply'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/IEP/env/qa'
+              environmentServiceName: 'Core IT - IEP (QA) IEP IaC Service Connection'
+              commandOptions: '-var "aks_ssh_key=$(aks-ssh-key)"'
